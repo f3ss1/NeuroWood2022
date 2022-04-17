@@ -65,3 +65,5 @@ We achieved our best results using the `VGG19BN` network and setup:
 * Image size 512x512;
 * No augmentations;
 * LR ~ 1e-3, no scheduler.
+
+UPD: on private set EFFnetB3 was the best.
