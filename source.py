@@ -9,7 +9,8 @@ import wandb
 import torch
 from torch.utils.data import Dataset
 from albumentations import Resize, Compose
-from albumentations.augmentations.transforms import Normalize
+from albumentations.augmentations.transforms import Normalize, Flip
+from albumentations.augmentations.geometric.rotate import Rotate
 
 from config import Config
 from tqdm import tqdm
@@ -19,14 +20,17 @@ from tqdm import tqdm
 
 class WoodDataset(Dataset):
     def __init__(self, create_train=True) -> None:
-        self.transform = Compose([Resize(Config.SIZE, Config.SIZE), Normalize()])
+        self.transform = Compose([Rotate(), Resize(Config.SIZE, Config.SIZE), Flip(), Normalize()])
         self.create_train = create_train
 
         if create_train:
+            #self.transform = Compose([Rotate(), Resize(Config.SIZE, Config.SIZE), Flip(), Normalize()])
+            self.transform = Compose([Resize(Config.SIZE, Config.SIZE), Normalize()])
             self.data = pd.read_csv('train.csv')
             self.data = self.data.sort_values('id').reset_index().drop('index', axis=1)
             self.data['class'] = self.data['class'].astype(int)
         else:
+            self.transform = Compose([Resize(Config.SIZE, Config.SIZE), Normalize()])
             self.data = pd.read_csv('sample_submission.csv')
             self.data['id'] = self.data['id'].astype(str)
 
@@ -47,7 +51,7 @@ class WoodDataset(Dataset):
         return self.data.shape[0]
 
 
-def train_one_epoch(model, train_dataloader, criterion, optimizer, device=Config.DEVICE):
+def train_one_epoch(model, train_dataloader, criterion, optimizer, scheduler=None, device=Config.DEVICE):
     rolling_loss = 0
     for images, labels in tqdm(train_dataloader):
         images = images.to(device)
@@ -58,6 +62,8 @@ def train_one_epoch(model, train_dataloader, criterion, optimizer, device=Config
         optimizer.step()
         optimizer.zero_grad()
         rolling_loss += loss.detach().cpu().numpy()
+    if scheduler:
+        scheduler.step()
 
     rolling_loss /= (len(train_dataloader) * Config.BATCH_SIZE)
     out_dict = {"Train loss": rolling_loss}
@@ -132,14 +138,14 @@ def _validate(model, val_dataloader, val_metric=None, val_criterion=None, device
         raise AttributeError
 
 
-def train(model, train_dataloader, criterion, optimizer, val_dataloader=None,
+def train(model, train_dataloader, criterion, optimizer, scheduler=None, val_dataloader=None,
           val_metric=None, val_criterion=None, n_epochs=10, device=Config.DEVICE):
     model.to(device)
     model.train()
     torch.save(model.state_dict(), 'Models/test')
     for i in range(n_epochs):
         loss_dict = train_one_epoch(model=model, train_dataloader=train_dataloader,
-                                    criterion=criterion, optimizer=optimizer, device=device)
+                                    criterion=criterion, optimizer=optimizer, scheduler=scheduler, device=device)
         print(f"Epoch {i + 1}/{n_epochs} is finished, train loss is {loss_dict['Train loss']}.")
 
         if val_dataloader:
